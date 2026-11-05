@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  RETAILER
+  SALES_ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  CANCELLED
+}
+
+enum DraftStatus {
+  DRAFT
+  NEEDS_REVIEW
+  CONFIRMED
+  DISCARDED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(RETAILER)
+  retailer     Retailer?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Retailer {
+  id          String         @id @default(cuid())
+  shopName    String
+  ownerName   String
+  phone       String         @unique
+  address     String
+  creditLimit Decimal        @default(0) @db.Decimal(12, 2)
+  userId      String?        @unique
+  user        User?          @relation(fields: [userId], references: [id])
+  orders      Order[]
+  aiDrafts    AIOrderDraft[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model Product {
+  id          String          @id @default(cuid())
+  sku         String          @unique
+  name        String
+  description String?
+  dealerPrice Decimal         @db.Decimal(10, 2)
+  stock       Int              @default(0)
+  unit        String           @default("case")
+  active      Boolean          @default(true)
+  schemes     Scheme[]
+  orderItems  OrderItem[]
+  draftItems  AIOrderDraftItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Scheme {
+  id              String   @id @default(cuid())
+  name            String
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  minimumQuantity Int
+  discountPercent Decimal? @db.Decimal(5, 2)
+  freeQuantity    Int      @default(0)
+  active          Boolean  @default(true)
+  startsAt        DateTime?
+  endsAt          DateTime?
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  retailerId  String
+  retailer    Retailer    @relation(fields: [retailerId], references: [id])
+  status      OrderStatus @default(PENDING)
+  totalAmount Decimal     @db.Decimal(12, 2)
+  items       OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  lineTotal Decimal @db.Decimal(12, 2)
+}
+
+model AIOrderDraft {
+  id          String             @id @default(cuid())
+  retailerId  String
+  retailer    Retailer           @relation(fields: [retailerId], references: [id])
+  originalText String
+  status      DraftStatus        @default(DRAFT)
+  items       AIOrderDraftItem[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model AIOrderDraftItem {
+  id              String       @id @default(cuid())
+  draftId         String
+  draft           AIOrderDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product?     @relation(fields: [productId], references: [id])
+  requestedText   String
+  quantity        Int?
+  confidence      Decimal?     @db.Decimal(5, 4)
+  status          String       @default("NEEDS_REVIEW")
+  alternatives    Json?
+}
